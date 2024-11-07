@@ -1,0 +1,134 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
+import os
+
+# Load your data from the specified Excel file
+data_file = r'C:\Users\MohamedHamdani\OneDrive - FORCE\Bureau\debit\debit_max.xlsx'
+if not os.path.exists(data_file):
+    print(f"Data file not found: {data_file}")
+else:
+    print(f"Data file found: {data_file}")
+
+data = pd.read_excel(data_file)
+
+# Print the column names to see what they are
+print("Column names:", data.columns)
+
+# Ensure 'Date' is converted to datetime format
+data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
+print("Converted 'Date' column to datetime format")
+
+# Check for any NaT (Not a Time) values that could cause issues
+if data['Date'].isna().any():
+    print("Warning: There are NaT values in the 'Date' column. These rows will be ignored.")
+    data = data.dropna(subset=['Date'])
+
+# Extract year and month from the 'Date' column
+data['Year'] = data['Date'].dt.year
+data['Month'] = data['Date'].dt.month.astype(int)  # Ensure 'Month' column is of integer type
+print("Extracted 'Year' and 'Month' from 'Date' column")
+
+# Define the column names for the year, month, and flow
+year_col = 'Year'
+month_col = 'Month'
+flow_col = 'Débit'
+
+# Ensure month names are correctly indexed
+month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+# Calculate the maximum flow for each month of each year
+max_monthly = data.groupby([year_col, month_col])[flow_col].max().unstack()
+max_monthly.columns = month_names
+print("Calculated the maximum flow for each month of each year")
+
+# Calculate the maximum flow for each year
+max_yearly = data.groupby(year_col)[flow_col].max()
+print("Calculated the maximum flow for each year")
+
+# Combine the results into one DataFrame
+result = max_monthly.copy()
+result['Max_Year'] = max_yearly
+print("Combined the results into one DataFrame")
+
+# Calculate the average flow for each month over all years
+monthly_average = data.groupby(month_col)[flow_col].mean()
+print("Calculated the average flow for each month over all years")
+
+# Calculate the total average flow for the entire year
+total_average_flow = monthly_average.sum()
+print("Calculated the total average flow for the entire year")
+
+# Calculate the percentage contribution of each month
+monthly_percentage = (monthly_average / total_average_flow) * 100
+print("Calculated the percentage contribution of each month")
+
+# Ensure the index is sorted and of the correct type
+monthly_percentage.index = pd.CategoricalIndex(month_names, ordered=True, categories=month_names)
+monthly_percentage = monthly_percentage.sort_index()
+print("Sorted the monthly percentage index")
+
+# Plot the seasonal distribution as a bar graph
+plt.figure(figsize=(12, 6))
+monthly_percentage.plot(kind='bar', color='skyblue', edgecolor='black')
+plt.title('Seasonal Distribution of Average Monthly Flows')
+plt.ylabel('Percentage (%)')
+plt.xlabel('Month')
+plt.xticks(rotation=45)
+plt.legend(['Percentage of Average Monthly Flows'])
+plt.tight_layout()
+
+# Save the plot
+graph_output_file = r'C:\Users\MohamedHamdani\OneDrive - FORCE\Bureau\debit\seasonal_distribution.png'
+plt.savefig(graph_output_file)
+print(f"Graph saved to: {graph_output_file}")
+plt.show()
+
+# Create a DataFrame for the seasonal distribution results in the required format
+seasonal_distribution_pivot = pd.DataFrame({
+    'Month': month_names,
+    'Percentage': monthly_percentage.values
+}).set_index('Month').transpose()
+print("Created a pivot DataFrame for the seasonal distribution results")
+
+# Create an Excel writer object and write the data to a new Excel file
+output_file = r'C:\Users\MohamedHamdani\OneDrive - FORCE\Bureau\debit\max_flow_results.xlsx'
+with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
+    result.to_excel(writer, sheet_name='Max_Flows')
+    seasonal_distribution_pivot.to_excel(writer, sheet_name='Seasonal_Distribution')
+
+print(f"Excel file written to: {output_file}")
+
+# Verify if the file was created
+if os.path.exists(output_file):
+    print(f"Excel file successfully created: {output_file}")
+else:
+    print(f"Failed to create Excel file: {output_file}")
+
+# Load the workbook to apply conditional formatting
+wb = load_workbook(output_file)
+ws = wb['Seasonal_Distribution']
+print("Loaded the workbook to apply conditional formatting")
+
+# Apply gradient color fill for percentages
+for col in range(2, 14):  # Assuming the percentages are in columns B to M
+    cell = ws.cell(row=2, column=col)
+    percentage = cell.value
+    if percentage <= 10:
+        color = "FFCCCC"  # Light red
+    elif percentage <= 20:
+        color = "FF9999"  # Red
+    elif percentage <= 30:
+        color = "FF6666"  # Dark red
+    elif percentage <= 40:
+        color = "FF3333"  # Darker red
+    else:
+        color = "FF0000"  # Darkest red
+    cell.fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+print("Applied gradient color fill for percentages")
+
+# Save the workbook with the applied conditional formatting
+wb.save(output_file)
+wb.close()
+print(f"Excel file with conditional formatting saved: {output_file}")
